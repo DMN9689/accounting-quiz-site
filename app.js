@@ -1,14 +1,23 @@
 'use strict';
 
+const RECENT_UNIT_LIMIT = 3;
+const RANDOM_SEQUENCE_ATTEMPTS = 200;
+const UNIT_WEIGHT_POWER = 1.25;
+
 const state = {
   questionsData: null,
   curriculumData: null,
   checkpointOrder: new Map(),
   activeFilter: 'all',
+  selectedUnit: 'random',
   eligible: [],
   order: [],
   current: 0,
-  answered: false
+  answered: false,
+  isInfinite: false,
+  solvedCount: 0,
+  recentUnits: [],
+  lastQuestionId: null
 };
 
 const el = {};
@@ -39,7 +48,6 @@ async function init(){
 
     curriculumData.checkpoints.forEach(cp => state.checkpointOrder.set(cp.id, Number(cp.order)));
 
-    buildProgressSelect();
     updateEligibility();
 
     el.loadingPanel.classList.add('hidden');
@@ -58,14 +66,15 @@ async function init(){
 
 function cacheElements(){
   [
-    'loadingPanel','errorPanel','errorMessage','setup','progressSelect','countSelect','availableCount','setupHint','startBtn',
-    'quizPanel','qIndex','qTotal','progressFill','source','qType','question','contextBlock','choices','result','resultTitle',
-    'explanations','nextBtn','endPanel','restartBtn','dataBadge'
+    'loadingPanel','errorPanel','errorMessage','setup','unitSelect','countSelect','availableCount','setupHint','startBtn',
+    'quizPanel','finiteProgress','infiniteProgress','solvedCount','qIndex','qTotal','progressbar','progressFill',
+    'source','qType','question','contextBlock','choices','result','resultTitle','explanations','nextBtn','endPanel',
+    'restartBtn','dataBadge'
   ].forEach(id => el[id] = document.getElementById(id));
 }
 
 function bindEvents(){
-  el.progressSelect.addEventListener('change', updateEligibility);
+  el.unitSelect.addEventListener('change', updateEligibility);
   el.countSelect.addEventListener('change', updateEligibility);
   el.startBtn.addEventListener('click', startQuiz);
   el.nextBtn.addEventListener('click', nextQuestion);
@@ -86,49 +95,91 @@ function validateData(qd, cd){
   if(!cd || !Array.isArray(cd.checkpoints)) throw new Error('curriculum.json 형식이 올바르지 않습니다.');
 }
 
-function buildProgressSelect(){
-  el.progressSelect.innerHTML = '';
-  const groups = new Map();
-
-  for(const cp of state.curriculumData.checkpoints){
-    if(!groups.has(cp.part)){
-      const group = document.createElement('optgroup');
-      group.label = `Part ${cp.part} · ${cp.part_title}`;
-      groups.set(cp.part, group);
-      el.progressSelect.appendChild(group);
-    }
-
-    const option = document.createElement('option');
-    option.value = cp.id;
-    option.textContent = `${cp.id} · ${cp.title}`;
-    if(cp.id === state.curriculumData.current_checkpoint) option.selected = true;
-    groups.get(cp.part).appendChild(option);
-  }
-}
-
 function updateEligibility(){
   if(!state.questionsData || !state.curriculumData) return;
 
-  const selectedCheckpoint = el.progressSelect.value;
-  const selectedOrder = state.checkpointOrder.get(selectedCheckpoint);
-  const questions = state.questionsData.questions;
+  const baseEligible = getBaseEligibleQuestions();
+  refreshUnitSelect(baseEligible);
+  state.selectedUnit = el.unitSelect.value || 'random';
 
-  state.eligible = questions.filter(q => {
-    if(!isQuestionAvailableAt(q, selectedOrder)) return false;
-    if(state.activeFilter === 'theory' && q.section !== 'theory') return false;
-    if(state.activeFilter === 'practical' && q.section !== 'practical') return false;
-    return true;
-  });
+  state.eligible = state.selectedUnit === 'random'
+    ? baseEligible.filter(q => Boolean(rotationUnit(q)))
+    : baseEligible.filter(q => Array.isArray(q.required_concepts) && q.required_concepts.includes(state.selectedUnit));
 
   const count = state.eligible.length;
   el.availableCount.textContent = `${count.toLocaleString('ko-KR')}문제`;
   el.startBtn.disabled = count === 0;
 
-  const cp = state.curriculumData.checkpoints.find(x => x.id === selectedCheckpoint);
-  const typeLabel = state.activeFilter === 'theory' ? '이론 기출' : state.activeFilter === 'practical' ? '실무·분개 기출' : '전체 기출';
-  el.setupHint.textContent = cp
-    ? `${cp.id} ${cp.title}까지의 진도를 기준으로 ${typeLabel} 중 출제 가능한 문제만 사용합니다.`
-    : `${typeLabel} 중 출제 가능한 문제만 사용합니다.`;
+  const typeName = state.activeFilter === 'theory' ? '이론 기출' : state.activeFilter === 'practical' ? '실무·분개 기출' : '전체 기출';
+  if(state.selectedUnit === 'random'){
+    const current = state.curriculumData.checkpoints.find(cp => cp.id === state.curriculumData.current_checkpoint);
+    el.setupHint.textContent = current
+      ? `${current.id} ${current.title}까지의 ${typeName}에서 직전 3문제와 기준 단원이 겹치지 않도록 출제합니다.`
+      : `${typeName}에서 직전 3문제와 기준 단원이 겹치지 않도록 출제합니다.`;
+    return;
+  }
+
+  const selected = state.curriculumData.checkpoints.find(cp => cp.id === state.selectedUnit);
+  el.setupHint.textContent = selected
+    ? `${selected.id} ${selected.title}와 연결된 ${typeName} ${count.toLocaleString('ko-KR')}문제를 사용합니다.`
+    : `${typeName} 중 출제 가능한 문제만 사용합니다.`;
+}
+
+function getBaseEligibleQuestions(){
+  const currentOrder = state.checkpointOrder.get(state.curriculumData.current_checkpoint);
+  return state.questionsData.questions.filter(q => isQuestionAvailableAt(q, currentOrder) && matchesActiveFilter(q));
+}
+
+function matchesActiveFilter(q){
+  if(state.activeFilter === 'theory') return q.section === 'theory';
+  if(state.activeFilter === 'practical') return q.section === 'practical';
+  return true;
+}
+
+function refreshUnitSelect(baseEligible){
+  const previous = el.unitSelect.value || 'random';
+  const currentOrder = state.checkpointOrder.get(state.curriculumData.current_checkpoint);
+  const counts = new Map();
+
+  for(const q of baseEligible){
+    const concepts = Array.isArray(q.required_concepts) ? new Set(q.required_concepts) : new Set();
+    for(const concept of concepts){
+      if(state.checkpointOrder.has(concept)) counts.set(concept, (counts.get(concept) || 0) + 1);
+    }
+  }
+
+  el.unitSelect.innerHTML = '';
+  const randomOption = document.createElement('option');
+  randomOption.value = 'random';
+  randomOption.textContent = '무작위 단원 · 직전 3문제와 다른 단원';
+  el.unitSelect.appendChild(randomOption);
+
+  const groups = new Map();
+  for(const cp of state.curriculumData.checkpoints){
+    if(Number(cp.order) > currentOrder) continue;
+
+    if(!groups.has(cp.part)){
+      const group = document.createElement('optgroup');
+      group.label = `Part ${cp.part} · ${cp.part_title}`;
+      groups.set(cp.part, group);
+      el.unitSelect.appendChild(group);
+    }
+
+    const count = counts.get(cp.id) || 0;
+    const option = document.createElement('option');
+    option.value = cp.id;
+    option.textContent = `${cp.id} · ${cp.title} (${count.toLocaleString('ko-KR')}문제)`;
+    option.disabled = count === 0;
+    groups.get(cp.part).appendChild(option);
+  }
+
+  const previousOption = Array.from(el.unitSelect.options).find(option => option.value === previous);
+  el.unitSelect.value = previousOption && !previousOption.disabled ? previous : 'random';
+}
+
+function rotationUnit(q){
+  const unit = q && q.available_from_checkpoint;
+  return unit && state.checkpointOrder.has(unit) ? unit : null;
 }
 
 function isQuestionAvailableAt(q, selectedOrder){
@@ -145,18 +196,142 @@ function isQuestionAvailableAt(q, selectedOrder){
 function startQuiz(){
   if(state.eligible.length === 0) return;
 
-  const desired = el.countSelect.value === 'all'
-    ? state.eligible.length
-    : Math.min(Number(el.countSelect.value), state.eligible.length);
-
-  state.order = shuffle(state.eligible).slice(0, desired);
+  state.isInfinite = el.countSelect.value === 'infinite';
+  state.solvedCount = 0;
+  state.recentUnits = [];
+  state.lastQuestionId = null;
   state.current = 0;
+  state.answered = false;
+
+  try{
+    const cycle = createQuestionCycle([]);
+    if(state.isInfinite || el.countSelect.value === 'all'){
+      state.order = cycle;
+    }else{
+      const desired = Math.min(Number(el.countSelect.value), cycle.length);
+      state.order = cycle.slice(0, desired);
+    }
+  }catch(error){
+    console.error(error);
+    el.setupHint.textContent = error?.message || String(error);
+    return;
+  }
 
   el.setup.classList.add('hidden');
   el.endPanel.classList.add('hidden');
   el.quizPanel.classList.remove('hidden');
   renderQuestion();
   window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function createQuestionCycle(startingRecentUnits = state.recentUnits){
+  if(state.selectedUnit === 'random'){
+    return buildRandomUnitCycle(state.eligible, startingRecentUnits);
+  }
+
+  const cycle = shuffle(state.eligible);
+  if(cycle.length > 1 && state.lastQuestionId && cycle[0].id === state.lastQuestionId){
+    const swapIndex = cycle.findIndex(q => q.id !== state.lastQuestionId);
+    if(swapIndex > 0) [cycle[0], cycle[swapIndex]] = [cycle[swapIndex], cycle[0]];
+  }
+  return cycle;
+}
+
+function buildRandomUnitCycle(questions, startingRecentUnits = []){
+  const grouped = new Map();
+  for(const q of questions){
+    const unit = rotationUnit(q);
+    if(!unit) throw new Error(`기준 단원을 확인할 수 없는 문제가 있습니다: ${q.id || 'ID 없음'}`);
+    if(!grouped.has(unit)) grouped.set(unit, []);
+    grouped.get(unit).push(q);
+  }
+
+  const counts = new Map(Array.from(grouped, ([unit, items]) => [unit, items.length]));
+  let unitOrder = null;
+  for(let attempt = 0; attempt < RANDOM_SEQUENCE_ATTEMPTS && !unitOrder; attempt++){
+    unitOrder = tryBuildWeightedUnitOrder(counts, startingRecentUnits);
+  }
+  if(!unitOrder) unitOrder = buildBalancedUnitOrder(counts, startingRecentUnits);
+
+  const questionBuckets = new Map(Array.from(grouped, ([unit, items]) => [unit, shuffle(items)]));
+  return unitOrder.map(unit => questionBuckets.get(unit).pop());
+}
+
+function tryBuildWeightedUnitOrder(initialCounts, startingRecentUnits){
+  const remaining = new Map(initialCounts);
+  const recent = startingRecentUnits.slice(-RECENT_UNIT_LIMIT);
+  const total = Array.from(remaining.values()).reduce((sum, count) => sum + count, 0);
+  const result = [];
+
+  while(result.length < total){
+    const candidates = Array.from(remaining).filter(([unit, count]) => count > 0 && !recent.includes(unit));
+    if(candidates.length === 0) return null;
+
+    const totalWeight = candidates.reduce((sum, [, count]) => sum + Math.pow(count, UNIT_WEIGHT_POWER), 0);
+    let target = Math.random() * totalWeight;
+    let chosenUnit = candidates[candidates.length - 1][0];
+    for(const [unit, count] of candidates){
+      target -= Math.pow(count, UNIT_WEIGHT_POWER);
+      if(target < 0){
+        chosenUnit = unit;
+        break;
+      }
+    }
+
+    remaining.set(chosenUnit, remaining.get(chosenUnit) - 1);
+    result.push(chosenUnit);
+    recent.push(chosenUnit);
+    if(recent.length > RECENT_UNIT_LIMIT) recent.shift();
+  }
+
+  return result;
+}
+
+function buildBalancedUnitOrder(initialCounts, startingRecentUnits){
+  const buckets = Array.from(initialCounts, ([unit, count]) => ({unit, remaining: count}));
+  const recent = startingRecentUnits.slice(-RECENT_UNIT_LIMIT);
+  const releaseByUnit = new Map();
+  recent.forEach((unit, index) => {
+    releaseByUnit.set(unit, RECENT_UNIT_LIMIT - recent.length + index + 1);
+  });
+
+  const available = [];
+  const cooldown = [];
+  for(const bucket of buckets){
+    if(releaseByUnit.has(bucket.unit)){
+      cooldown.push({bucket, releaseAt: releaseByUnit.get(bucket.unit)});
+    }else{
+      available.push(bucket);
+    }
+  }
+
+  const total = Array.from(initialCounts.values()).reduce((sum, count) => sum + count, 0);
+  const result = [];
+  for(let index = 0; result.length < total; index++){
+    for(let i = cooldown.length - 1; i >= 0; i--){
+      if(cooldown[i].releaseAt <= index){
+        available.push(cooldown[i].bucket);
+        cooldown.splice(i, 1);
+      }
+    }
+
+    if(available.length === 0){
+      throw new Error('직전 3문제와 다른 단원으로 전체 출제 순서를 구성할 수 없습니다.');
+    }
+
+    const maxRemaining = Math.max(...available.map(bucket => bucket.remaining));
+    const tied = available.filter(bucket => bucket.remaining === maxRemaining);
+    const chosen = tied[Math.floor(Math.random() * tied.length)];
+    available.splice(available.indexOf(chosen), 1);
+
+    result.push(chosen.unit);
+    chosen.remaining -= 1;
+    if(chosen.remaining > 0){
+      cooldown.push({bucket: chosen, releaseAt: index + RECENT_UNIT_LIMIT + 1});
+    }
+  }
+
+  return result;
 }
 
 function shuffle(arr){
@@ -173,9 +348,29 @@ function renderQuestion(){
   const q = state.order[state.current];
   const total = state.order.length;
 
-  el.qIndex.textContent = state.current + 1;
-  el.qTotal.textContent = total;
-  el.progressFill.style.width = `${(state.current / total) * 100}%`;
+  if(state.selectedUnit === 'random'){
+    const unit = rotationUnit(q);
+    if(unit){
+      state.recentUnits.push(unit);
+      state.recentUnits = state.recentUnits.slice(-RECENT_UNIT_LIMIT);
+    }
+  }
+  state.lastQuestionId = q.id || null;
+
+  if(state.isInfinite){
+    el.finiteProgress.classList.add('hidden');
+    el.infiniteProgress.classList.remove('hidden');
+    el.progressbar.classList.add('hidden');
+    el.solvedCount.textContent = state.solvedCount.toLocaleString('ko-KR');
+  }else{
+    el.finiteProgress.classList.remove('hidden');
+    el.infiniteProgress.classList.add('hidden');
+    el.progressbar.classList.remove('hidden');
+    el.qIndex.textContent = state.current + 1;
+    el.qTotal.textContent = total;
+    el.progressFill.style.width = `${(state.current / total) * 100}%`;
+  }
+
   el.source.textContent = sourceLabel(q);
   el.qType.textContent = typeLabel(q);
   el.question.textContent = q.question || '';
@@ -203,7 +398,7 @@ function renderQuestion(){
   el.result.classList.add('hidden');
   el.resultTitle.innerHTML = '';
   el.explanations.innerHTML = '';
-  el.nextBtn.textContent = state.current === total - 1 ? '풀이 완료' : '다음 문제';
+  el.nextBtn.textContent = !state.isInfinite && state.current === total - 1 ? '풀이 완료' : '다음 문제';
 }
 
 function sourceLabel(q){
@@ -240,6 +435,8 @@ function buildContext(q){
 function selectChoice(selectedIndex){
   if(state.answered) return;
   state.answered = true;
+  state.solvedCount += 1;
+  if(state.isInfinite) el.solvedCount.textContent = state.solvedCount.toLocaleString('ko-KR');
 
   const q = state.order[state.current];
   const correctNo = Array.isArray(q.answer) ? Number(q.answer[0]) : Number(q.answer);
@@ -259,7 +456,7 @@ function selectChoice(selectedIndex){
     : `<span class="bad">✕ 오답입니다.</span><span>정답은 ${correctNo}번입니다.</span>`;
 
   renderExplanation(q, selectedIndex, correctIndex);
-  el.progressFill.style.width = `${((state.current + 1) / state.order.length) * 100}%`;
+  if(!state.isInfinite) el.progressFill.style.width = `${((state.current + 1) / state.order.length) * 100}%`;
   el.result.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
@@ -301,12 +498,29 @@ function renderExplanation(q, selectedIndex, correctIndex){
 
 function nextQuestion(){
   if(!state.answered) return;
+
   if(state.current >= state.order.length - 1){
+    if(state.isInfinite){
+      try{
+        state.order = createQuestionCycle(state.recentUnits);
+        state.current = 0;
+      }catch(error){
+        console.error(error);
+        el.nextBtn.disabled = true;
+        el.nextBtn.textContent = '출제 중단';
+        return;
+      }
+      renderQuestion();
+      window.scrollTo({top:0, behavior:'smooth'});
+      return;
+    }
+
     el.quizPanel.classList.add('hidden');
     el.endPanel.classList.remove('hidden');
     window.scrollTo({top:0, behavior:'smooth'});
     return;
   }
+
   state.current += 1;
   renderQuestion();
   window.scrollTo({top:0, behavior:'smooth'});
@@ -316,6 +530,11 @@ function restart(){
   state.order = [];
   state.current = 0;
   state.answered = false;
+  state.isInfinite = false;
+  state.solvedCount = 0;
+  state.recentUnits = [];
+  state.lastQuestionId = null;
+  el.nextBtn.disabled = false;
   el.endPanel.classList.add('hidden');
   el.quizPanel.classList.add('hidden');
   el.setup.classList.remove('hidden');
