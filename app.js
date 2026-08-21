@@ -343,6 +343,60 @@ function shuffle(arr){
   return a;
 }
 
+function formatChoiceText(value){
+  const formLabels = new Set([
+    '유형', '공급가액', '부가세', '거래처', '공급처', '공급처명', '전자', '분개',
+    '불공제사유', '영세율구분'
+  ]);
+  const currencyAmount = /[-－+△]?\d[\d,]*(?:\.\d+)?\s*$/u;
+  const sourceLines = String(value ?? '')
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map(line => line.replace(/[ \t]+$/g, ''));
+
+  const currencyJoined = [];
+  for(const line of sourceLines){
+    if(line.trim() === '원'){
+      let previous = currencyJoined.length - 1;
+      while(previous >= 0){
+        const candidate = currencyJoined[previous].trimEnd();
+        if(currencyAmount.test(candidate) && !candidate.endsWith('원')) break;
+        previous -= 1;
+      }
+      if(previous >= 0){
+        currencyJoined[previous] = `${currencyJoined[previous].trimEnd()}원`;
+        continue;
+      }
+    }
+    currencyJoined.push(line);
+  }
+
+  const semanticJoined = [];
+  for(let index = 0; index < currencyJoined.length; index += 1){
+    const line = currencyJoined[index];
+    const trimmed = line.trim();
+    const journalMarker = trimmed.match(/^\((차|대)\)$/);
+    const labelMatch = trimmed.match(/^(.+?)\s*[:：]\s*$/);
+    const label = labelMatch?.[1]?.trim();
+
+    if(journalMarker || (label && formLabels.has(label))){
+      let next = index + 1;
+      while(next < currencyJoined.length && !currencyJoined[next].trim()) next += 1;
+      if(next < currencyJoined.length){
+        const prefix = trimmed;
+        semanticJoined.push(`${prefix} ${currencyJoined[next].trim()}`);
+        index = next;
+        continue;
+      }
+    }
+    semanticJoined.push(line);
+  }
+
+  const normalized = semanticJoined.filter(line => line.trim());
+
+  return normalized.join('\n');
+}
+
 function renderQuestion(){
   state.answered = false;
   const q = state.order[state.current];
@@ -390,7 +444,7 @@ function renderQuestion(){
     button.type = 'button';
     button.className = 'choice';
     button.innerHTML = `<span class="num">${idx + 1}</span><span class="choiceText"></span>`;
-    button.querySelector('.choiceText').textContent = choice.text ?? '';
+    button.querySelector('.choiceText').textContent = formatChoiceText(choice.text);
     button.addEventListener('click', () => selectChoice(idx));
     el.choices.appendChild(button);
   });
