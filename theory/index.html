@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f6f8fb" />
+  <meta name="description" content="재무회계 수업자료에서 서로 헷갈리기 쉬운 회계처리만 모바일용으로 정리한 이론 노트" />
+  <title>재무회계 헷갈리는 이론 정리</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body id="top">
+  <main class="page">
+    <header class="hero">
+      <div class="eyebrow">전산회계 1급 · 전산세무 2급</div>
+      <h1>헷갈리는 재무회계<br />이론만 모아보기</h1>
+      <p>비슷한 계정과목과 회계처리를 구분하는 기준만 빠르게 확인할 수 있도록 정리했습니다.</p>
+      <div class="source-note">수업자료의 표현과 처리기준을 그대로 따르며, 아래 8개 구분만 수록했습니다.</div>
+    </header>
+
+    <div class="sticky-shell" aria-label="빠른 이동">
+      <nav class="quick-nav">
+        <a href="#cost">부대비용</a>
+        <a href="#expense">비용 구분</a>
+        <a href="#security">단기매매증권</a>
+        <a href="#note">어음</a>
+        <a href="#baddebt">대손</a>
+        <a href="#tax">선납세금·예수금</a>
+        <a href="#suspense">가지급금·가수금</a>
+        <a href="#cash">현금과부족</a>
+      </nav>
+    </div>
+
+    <section class="overview" aria-labelledby="overview-title">
+      <h2 id="overview-title">먼저 보는 한 줄 기준</h2>
+      <div class="overview-grid">
+        <div class="overview-item"><b>부대비용</b><span>매입이면 취득원가, 매출이면 비용</span></div>
+        <div class="overview-item"><b>비용 구분</b><span>누구에게, 어떤 목적으로 지출했는지 확인</span></div>
+        <div class="overview-item"><b>증권</b><span>취득·처분·기말평가마다 수수료 처리가 다름</span></div>
+        <div class="overview-item"><b>어음</b><span>만기 전인지, 만기일인지, 부도인지 확인</span></div>
+        <div class="overview-item"><b>대손</b><span>설정·발생·회수 단계를 먼저 구분</span></div>
+        <div class="overview-item"><b>원천징수</b><span>세금을 떼인 쪽은 선납세금, 떼어 보관한 쪽은 예수금</span></div>
+        <div class="overview-item"><b>임시계정</b><span>나간 돈은 가지급금, 들어온 돈은 가수금</span></div>
+        <div class="overview-item"><b>현금과부족</b><span>장부상 현금을 실제현금에 먼저 맞춤</span></div>
+      </div>
+    </section>
+
+    <div class="controls" aria-label="내용 펼침 조작">
+      <button class="control" id="expandAll" type="button">전체 펼치기</button>
+      <button class="control" id="collapseAll" type="button">모두 접기</button>
+    </div>
+
+    <section id="topics" aria-live="polite"></section>
+
+    <footer class="footer">기준 자료: 20260824_재무회계_쌤.pdf · 헷갈리는 이론 8개 항목</footer>
+  </main>
+
+  <a class="to-top" href="#top" aria-label="맨 위로 이동">↑</a>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
