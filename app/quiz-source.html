@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <meta name="description" content="수업 진도에 맞춰 기존 전산회계·전산세무 기출문제를 4지선다로 연습하는 재무회계 문제풀이 사이트" />
+  <title>재무회계 기출문제 연습</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">전산회계 1급 · 전산세무 2급</div>
+        <h1>재무회계 기출문제 연습</h1>
+        <div class="sub">
+          현재 수업진도 내 단원을 직전 3문제와 겹치지 않게 무작위로 출제합니다.<br />
+          원하는 단원만 선택해서 집중적으로 풀 수도 있습니다.<br />
+          풀이이력은 저장하지 않으며, 답을 선택하면 바로 해설을 확인할 수 있습니다.
+        </div>
+      </div>
+      <div id="dataBadge" class="badge">데이터 불러오는 중</div>
+    </header>
+
+    <section id="loadingPanel" class="panel loading">
+      <div class="spinner" aria-hidden="true"></div>
+      <strong>문제 데이터를 불러오는 중입니다.</strong>
+      <span>문제 수가 많아 처음 접속할 때 잠시 걸릴 수 있습니다.</span>
+    </section>
+
+    <section id="errorPanel" class="panel errorPanel hidden" role="alert">
+      <h2>데이터를 불러오지 못했습니다.</h2>
+      <p id="errorMessage"></p>
+      <p class="small">정적 웹서버에서 실행하거나 배포된 사이트 주소로 접속해 주세요.</p>
+    </section>
+
+    <section id="setup" class="panel setup hidden">
+      <div class="grid">
+        <div class="field">
+          <label for="unitSelect">출제 단원</label>
+          <select id="unitSelect"></select>
+        </div>
+        <div class="field">
+          <label for="countSelect">문제 수</label>
+          <select id="countSelect">
+            <option value="infinite" selected>무한</option>
+            <option value="10">10문제</option>
+            <option value="20">20문제</option>
+            <option value="30">30문제</option>
+            <option value="all">전체</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>출제 가능 문제</label>
+          <div id="availableCount" class="readonly">-</div>
+        </div>
+      </div>
+
+      <div class="chips" aria-label="문제 유형">
+        <button class="chip active" type="button" data-filter="all">전체</button>
+        <button class="chip" type="button" data-filter="theory">이론 기출</button>
+        <button class="chip" type="button" data-filter="practical">실무·분개 기출</button>
+        <div class="chip static">답 선택 즉시 해설</div>
+      </div>
+
+      <div class="actionrow">
+        <div id="setupHint" class="hint"></div>
+        <button id="startBtn" class="primary" type="button">문제 풀기</button>
+      </div>
+    </section>
+
+    <section id="quizPanel" class="panel quiz hidden">
+      <div class="quizhead">
+        <div class="progressArea">
+          <div class="progressText">
+            <span id="finiteProgress"><span id="qIndex">1</span> / <span id="qTotal">1</span></span>
+            <span id="infiniteProgress" class="hidden">지금까지 푼 문제 <span id="solvedCount">0</span>개</span>
+          </div>
+          <div id="progressbar" class="progressbar" aria-hidden="true"><div id="progressFill"></div></div>
+        </div>
+        <div id="source" class="source"></div>
+      </div>
+
+      <div id="qType" class="qtype"></div>
+      <h2 id="question" class="question"></h2>
+      <div id="contextBlock" class="contextBlock hidden"></div>
+      <div id="choices" class="choices"></div>
+
+      <div id="result" class="result hidden">
+        <div id="resultTitle" class="resultTitle"></div>
+        <div id="explanations"></div>
+        <div class="navrow">
+          <div class="sessionNote">새로고침하면 현재 풀이 진행상황은 초기화됩니다.</div>
+          <button id="nextBtn" class="primary" type="button">다음 문제</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="endPanel" class="panel end hidden">
+      <h2>풀이 완료</h2>
+      <p>선택한 범위의 문제 풀이가 끝났습니다.</p>
+      <button id="restartBtn" class="secondary" type="button">처음으로</button>
+    </section>
+  </div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+:root {
+  --bg: #f6f7f9;
+  --paper: #ffffff;
+  --ink: #18202b;
+  --sub: #5f6b7a;
+  --faint: #8a94a3;
+  --line: #dfe4ea;
+  --line-strong: #cbd3dd;
+  --blue: #1769c2;
+  --blue-dark: #0c4f98;
+  --blue-soft: #eef6ff;
+  --red: #c83832;
+  --red-soft: #fff2f1;
+  --yellow: #fff0a8;
+  --yellow-soft: #fffbed;
+  --green: #14785d;
+  --green-soft: #edf8f4;
+  --radius: 10px;
+  --header-height: 50px;
+  --content-max: 780px;
+}
