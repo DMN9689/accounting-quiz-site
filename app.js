@@ -17,7 +17,9 @@ const state = {
   isInfinite: false,
   solvedCount: 0,
   recentUnits: [],
-  lastQuestionId: null
+  lastQuestionId: null,
+  reviewQueue: new Map(),
+  isReviewRound: false
 };
 
 const el = {};
@@ -49,6 +51,7 @@ async function init(){
     curriculumData.checkpoints.forEach(cp => state.checkpointOrder.set(cp.id, Number(cp.order)));
 
     updateEligibility();
+    updateReviewUI();
 
     el.loadingPanel.classList.add('hidden');
     el.setup.classList.remove('hidden');
@@ -69,7 +72,9 @@ function cacheElements(){
     'loadingPanel','errorPanel','errorMessage','setup','unitSelect','countSelect','availableCount','setupHint','startBtn',
     'quizPanel','finiteProgress','infiniteProgress','solvedCount','qIndex','qTotal','progressbar','progressFill',
     'source','qType','question','contextBlock','choices','result','resultTitle','explanations','nextBtn','endPanel',
-    'restartBtn','dataBadge'
+    'restartBtn','dataBadge',
+    'reviewArea','reviewCount','reviewBtn','endReviewArea','endReviewCount','endReviewBtn',
+    'setupReviewArea','setupReviewCount','setupReviewBtn'
   ].forEach(id => el[id] = document.getElementById(id));
 }
 
@@ -79,6 +84,9 @@ function bindEvents(){
   el.startBtn.addEventListener('click', startQuiz);
   el.nextBtn.addEventListener('click', nextQuestion);
   el.restartBtn.addEventListener('click', restart);
+  el.reviewBtn.addEventListener('click', startReviewRound);
+  el.endReviewBtn.addEventListener('click', startReviewRound);
+  el.setupReviewBtn.addEventListener('click', startReviewRound);
 
   document.querySelectorAll('.chip[data-filter]').forEach(button => {
     button.addEventListener('click', () => {
@@ -197,6 +205,7 @@ function startQuiz(){
   if(state.eligible.length === 0) return;
 
   state.isInfinite = el.countSelect.value === 'infinite';
+  state.isReviewRound = false;
   state.solvedCount = 0;
   state.recentUnits = [];
   state.lastQuestionId = null;
@@ -449,10 +458,19 @@ function renderQuestion(){
     el.choices.appendChild(button);
   });
 
+  const dontKnowIndex = q.choices.length;
+  const dontKnowBtn = document.createElement('button');
+  dontKnowBtn.type = 'button';
+  dontKnowBtn.className = 'choice dontknow';
+  dontKnowBtn.innerHTML = `<span class="num">${dontKnowIndex + 1}</span><span class="choiceText">모르겠음</span>`;
+  dontKnowBtn.addEventListener('click', () => selectChoice(dontKnowIndex));
+  el.choices.appendChild(dontKnowBtn);
+
   el.result.classList.add('hidden');
   el.resultTitle.innerHTML = '';
   el.explanations.innerHTML = '';
   el.nextBtn.textContent = !state.isInfinite && state.current === total - 1 ? '풀이 완료' : '다음 문제';
+  updateReviewUI();
 }
 
 function sourceLabel(q){
@@ -495,7 +513,8 @@ function selectChoice(selectedIndex){
   const q = state.order[state.current];
   const correctNo = Array.isArray(q.answer) ? Number(q.answer[0]) : Number(q.answer);
   const correctIndex = correctNo - 1;
-  const isCorrect = selectedIndex === correctIndex;
+  const isDontKnow = selectedIndex === q.choices.length;
+  const isCorrect = !isDontKnow && selectedIndex === correctIndex;
 
   [...el.choices.querySelectorAll('.choice')].forEach((button, idx) => {
     button.classList.add('disabled');
@@ -505,17 +524,35 @@ function selectChoice(selectedIndex){
   });
 
   el.result.classList.remove('hidden');
-  el.resultTitle.innerHTML = isCorrect
-    ? '<span class="good">✓ 정답입니다.</span>'
-    : `<span class="bad">✕ 오답입니다.</span><span>정답은 ${correctNo}번입니다.</span>`;
+  if(isDontKnow){
+    el.resultTitle.innerHTML = `<span class="bad">🤔 모르는 문제로 표시했습니다.</span><span>정답은 ${correctNo}번입니다.</span>`;
+  }else{
+    el.resultTitle.innerHTML = isCorrect
+      ? '<span class="good">✓ 정답입니다.</span>'
+      : `<span class="bad">✕ 오답입니다.</span><span>정답은 ${correctNo}번입니다.</span>`;
+  }
 
-  renderExplanation(q, selectedIndex, correctIndex);
+  if(isCorrect){
+    state.reviewQueue.delete(q.id);
+  }else{
+    state.reviewQueue.set(q.id, q);
+  }
+  updateReviewUI();
+
+  renderExplanation(q, selectedIndex, correctIndex, isDontKnow);
   if(!state.isInfinite) el.progressFill.style.width = `${((state.current + 1) / state.order.length) * 100}%`;
   el.result.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
-function renderExplanation(q, selectedIndex, correctIndex){
+function renderExplanation(q, selectedIndex, correctIndex, isDontKnow){
   el.explanations.innerHTML = '';
+
+  if(isDontKnow){
+    const note = document.createElement('div');
+    note.className = 'dontknowNote';
+    note.textContent = '모르겠음으로 표시된 문제입니다. 오답으로 처리되어 복습문항에 모입니다.';
+    el.explanations.appendChild(note);
+  }
 
   const isJournal = q.source_type === 'journal_to_mcq' || q.journal_explanation_only;
   if(isJournal){
@@ -569,8 +606,10 @@ function nextQuestion(){
       return;
     }
 
+    state.isReviewRound = false;
     el.quizPanel.classList.add('hidden');
     el.endPanel.classList.remove('hidden');
+    updateReviewUI();
     window.scrollTo({top:0, behavior:'smooth'});
     return;
   }
@@ -580,11 +619,45 @@ function nextQuestion(){
   window.scrollTo({top:0, behavior:'smooth'});
 }
 
+function startReviewRound(){
+  if(state.reviewQueue.size === 0) return;
+
+  state.isReviewRound = true;
+  state.isInfinite = false;
+  state.solvedCount = 0;
+  state.recentUnits = [];
+  state.lastQuestionId = null;
+  state.order = shuffle(Array.from(state.reviewQueue.values()));
+  state.current = 0;
+  state.answered = false;
+  el.nextBtn.disabled = false;
+
+  el.setup.classList.add('hidden');
+  el.endPanel.classList.add('hidden');
+  el.quizPanel.classList.remove('hidden');
+  renderQuestion();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function updateReviewUI(){
+  const count = state.reviewQueue.size;
+  const label = count > 0 ? `복습문항 ${count.toLocaleString('ko-KR')}개` : '';
+
+  el.reviewCount.textContent = label;
+  el.endReviewCount.textContent = label;
+  el.setupReviewCount.textContent = label;
+
+  el.endReviewArea.classList.toggle('hidden', count === 0);
+  el.setupReviewArea.classList.toggle('hidden', count === 0);
+  el.reviewArea.classList.toggle('hidden', count === 0 || state.isReviewRound);
+}
+
 function restart(){
   state.order = [];
   state.current = 0;
   state.answered = false;
   state.isInfinite = false;
+  state.isReviewRound = false;
   state.solvedCount = 0;
   state.recentUnits = [];
   state.lastQuestionId = null;
@@ -593,5 +666,6 @@ function restart(){
   el.quizPanel.classList.add('hidden');
   el.setup.classList.remove('hidden');
   updateEligibility();
+  updateReviewUI();
   window.scrollTo({top:0, behavior:'smooth'});
 }

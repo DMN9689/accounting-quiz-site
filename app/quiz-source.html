@@ -17,7 +17,8 @@
         <div class="sub">
           현재 수업진도 내 단원을 직전 3문제와 겹치지 않게 무작위로 출제합니다.<br />
           원하는 단원만 선택해서 집중적으로 풀 수도 있습니다.<br />
-          풀이이력은 저장하지 않으며, 답을 선택하면 바로 해설을 확인할 수 있습니다.
+          풀이이력은 저장하지 않으며, 답을 선택하면 바로 해설을 확인할 수 있습니다.<br />
+          정답을 모르면 "모르겠음"을 선택하세요 — 오답으로 처리되어 복습문항에 모입니다.
         </div>
       </div>
       <div id="dataBadge" class="badge">데이터 불러오는 중</div>
@@ -64,6 +65,11 @@
         <div class="chip static">답 선택 즉시 해설</div>
       </div>
 
+      <div id="setupReviewArea" class="reviewArea hidden">
+        <span id="setupReviewCount" class="reviewCount"></span>
+        <button id="setupReviewBtn" class="reviewBtn" type="button">복습문제만 다시 풀기</button>
+      </div>
+
       <div class="actionrow">
         <div id="setupHint" class="hint"></div>
         <button id="startBtn" class="primary" type="button">문제 풀기</button>
@@ -78,6 +84,10 @@
             <span id="infiniteProgress" class="hidden">지금까지 푼 문제 <span id="solvedCount">0</span>개</span>
           </div>
           <div id="progressbar" class="progressbar" aria-hidden="true"><div id="progressFill"></div></div>
+          <div id="reviewArea" class="reviewArea hidden">
+            <span id="reviewCount" class="reviewCount"></span>
+            <button id="reviewBtn" class="reviewBtn" type="button">복습문제만 다시 풀기</button>
+          </div>
         </div>
         <div id="source" class="source"></div>
       </div>
@@ -100,6 +110,10 @@
     <section id="endPanel" class="panel end hidden">
       <h2>풀이 완료</h2>
       <p>선택한 범위의 문제 풀이가 끝났습니다.</p>
+      <div id="endReviewArea" class="reviewArea centered hidden">
+        <span id="endReviewCount" class="reviewCount"></span>
+        <button id="endReviewBtn" class="reviewBtn" type="button">복습문제만 다시 풀기</button>
+      </div>
       <button id="restartBtn" class="secondary" type="button">처음으로</button>
     </section>
   </div>
